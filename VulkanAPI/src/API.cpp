@@ -37,7 +37,7 @@
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
-const int MAX_FRAMES_IN_FLIGHT = 2;
+const int MAX_FRAMES_IN_FLIGHT = 3;
 
 #define VKDebugBreak __debugbreak();
 #define VKPrint(x) std::cout << x << std::endl;
@@ -174,7 +174,7 @@ public:
     {
         initWindow();
         initVulkan();
-        //initImgui();
+        //initImgui(float(swapChainExtent.width), float(swapChainExtent.height));
         mainLoop();
         cleanup();
     }
@@ -201,9 +201,15 @@ private:
 
         if (!window) {
             VKPrint("Window is equal to null!")
-            glfwTerminate();
+            glfwTerminate(); 
             VKDebugBreak
         }
+
+        GLFWimage images[2];
+        images[0].pixels = stbi_load("VulkanAPI/Icon/Axe.png", &images[0].width, &images[0].height, 0, 4);
+        glfwSetWindowIcon(window, 1, images);
+        stbi_image_free(images[0].pixels);
+
 
         glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height)
         {
@@ -261,78 +267,67 @@ private:
         createSyncObjects();
     }
 
-    void initImgui()
+    void initImgui(float width, float height)
     {
-        VkDescriptorPoolSize pool_sizes[] =
+        QueueFamilyIndices Indices = findQueueFamilies(physicalDevice);
+
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+        ImGuiStyle& style = ImGui::GetStyle();
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
-            { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
-        };
+            style.WindowRounding = 0.0f;
+            style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+        }
 
-        VkDescriptorPoolCreateInfo pool_info = {};
-        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pool_info.maxSets = 1000;
-        pool_info.poolSizeCount = std::size(pool_sizes);
-        pool_info.pPoolSizes = pool_sizes;
+        io.DisplaySize = ImVec2(width, height);
+        io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 
-        VkDescriptorPool imguiPool;
-        vkCreateDescriptorPool(device, &pool_info, nullptr, &imguiPool);
-
+        // Setup Platform/Renderer bindings
+        ImGui_ImplGlfw_InitForVulkan(window, true);
         ImGui_ImplVulkan_InitInfo init_info = {};
         init_info.Instance = instance;
         init_info.PhysicalDevice = physicalDevice;
         init_info.Device = device;
-        init_info.Queue = graphicsQueue;
-        init_info.DescriptorPool = imguiPool;
-        init_info.MinImageCount = 3;
-        init_info.ImageCount = 3;
-        init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        init_info.QueueFamily = Indices.graphicsFamily.value();
+        init_info.Queue = presentQueue;
+        init_info.PipelineCache = VK_NULL_HANDLE;
+        init_info.DescriptorPool = descriptorPool;
+        init_info.Allocator = NULL;
+        init_info.MinImageCount = 2;
+        init_info.ImageCount = static_cast<uint32_t>(swapChainImages.size());
+        init_info.CheckVkResultFn = NULL;
+        ImGui_ImplVulkan_Init(&init_info, renderPass);
 
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO();
-        ImFontConfig fontConfig;
-        fontConfig.FontDataOwnedByAtlas = false;
-        ImFont* Font = io.Fonts->AddFontDefault(); 
-        io.FontDefault = Font;
-
+        // Setup Dear ImGui style
         ImGui::StyleColorsDark();
 
-        ImGui_ImplGlfw_InitForVulkan(window, true);
-        ImGui_ImplVulkan_Init(&init_info, renderPass);
-        
-        VkCommandBufferBeginInfo begin_info = {};
-        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(commandBuffers[0], &begin_info);
-        ImGui_ImplVulkan_CreateFontsTexture(commandBuffers[0]);
-        vkEndCommandBuffer(commandBuffers[0]);
-        vkDeviceWaitIdle(device);
+        VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+        ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
+        endSingleTimeCommands(commandBuffer);
         ImGui_ImplVulkan_DestroyFontUploadObjects();
     }
 
     void ImguiUpdate()
-    {
+    {        
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
+
+        auto WindowSize = ImVec2((float)swapChainExtent.width, (float)swapChainExtent.height);
+        ImGui::SetNextWindowSize(WindowSize, ImGuiCond_::ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_::ImGuiCond_FirstUseEver);
+
         ImGui::NewFrame();
 
         ImGui::Begin("Vulkan Renderer");
         ImGui::Text("Online!");
         ImGui::End();
 
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[0], graphicsPipeline);
+        
         ImGui::Render();
     }
 
@@ -348,9 +343,9 @@ private:
         while (!glfwWindowShouldClose(window))
         {
             SetSpeed(speed);
-            //ImguiUpdate();
             glfwPollEvents();
             drawFrame();
+            //ImguiUpdate();
         }
         vkDeviceWaitIdle(device);
     }
@@ -1154,6 +1149,8 @@ private:
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
         vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+
+        //ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[2], graphicsPipeline);
 
         vkCmdEndRenderPass(commandBuffer);
 
