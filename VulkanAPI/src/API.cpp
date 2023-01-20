@@ -1156,7 +1156,7 @@ private:
 
         if (EnableImGui)
         {
-            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[2], graphicsPipeline);
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ImGuiCommandBuffer, graphicsPipeline);
         }
 
         vkCmdEndRenderPass(commandBuffer);
