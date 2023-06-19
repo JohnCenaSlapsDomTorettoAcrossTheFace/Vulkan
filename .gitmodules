@@ -1,0 +1,20 @@
+[submodule "VulkanAPI/Vendor/GLFW"]
+	path = VulkanAPI/Vendor/GLFW
+	url = ../../TheCherno/glfw.git
+	branch = master
+[submodule "VulkanAPI/Vendor/ImGui"]
+	path = VulkanAPI/Vendor/ImGui
+	url = ../../TheCherno/imgui.git
+	branch = docking
+[submodule "VulkanAPI/Vendor/glm"]
+	path = VulkanAPI/Vendor/GLM
+	url = ../../g-truc/glm.git
+	branch = master
+[submodule "VulkanAPI/Vendor/stb"]
+	path = VulkanAPI/Vendor/stb
+	url = https://github.com/nothings/stb
+	branch = master
+[submodule "VulkanAPI/Vendor/tinyobjectloader"]
+	path = VulkanAPI/Vendor/tinyobjectloader
+	url = https://github.com/tinyobjloader/tinyobjloader
+	branch = master

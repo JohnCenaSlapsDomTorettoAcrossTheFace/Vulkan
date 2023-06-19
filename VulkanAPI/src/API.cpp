@@ -30,6 +30,8 @@
 #include <imgui.h>
 #include <imgui_impl_vulkan.h>
 #include <imgui_impl_glfw.h>
+#include <imgui_internal.h>
+
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
@@ -193,7 +195,7 @@ private:
     {
         if (!glfwInit())
         {
-            std::cout << "GLFW did not initialize!" << std::endl;
+            VKPrint("GLFW did not initialize!")
             VKDebugBreak
         }
 
@@ -207,6 +209,8 @@ private:
                 glfwTerminate();
             VKDebugBreak
         }
+        
+        VKPrint(glfwGetVersionString())
 
         GLFWimage images[2];
         images[0].pixels = stbi_load("VulkanAPI/Icon/Axe.png", &images[0].width, &images[0].height, 0, 4);
@@ -302,7 +306,7 @@ private:
         init_info.DescriptorPool = descriptorPool;
         init_info.Allocator = NULL;
         init_info.MinImageCount = 2;
-        init_info.ImageCount = static_cast<uint32_t>(swapChainImages.size());
+        init_info.ImageCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
         init_info.CheckVkResultFn = NULL;
         ImGui_ImplVulkan_Init(&init_info, renderPass);
 
@@ -312,6 +316,8 @@ private:
         VkCommandBuffer commandBuffer = beginSingleTimeCommands();
         ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
         endSingleTimeCommands(commandBuffer);
+
+        vkDeviceWaitIdle(device);
         ImGui_ImplVulkan_DestroyFontUploadObjects();
     }
 
@@ -324,11 +330,6 @@ private:
         ImGui::Begin("Vulkan Renderer");
         ImGui::Text("Online!");
         ImGui::End();
-        ImGui::Render();
-
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ImGuiCommandBuffer);
-
-        ImGui::Render();
     }
 
     void ImguiEnd()
@@ -1082,8 +1083,7 @@ private:
         poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
-            throw std::runtime_error("Failed to create command pool!");
-
+            throw std::runtime_error("Failed to create command pool!");    
     }
 
     void createCommandBuffers()
@@ -1104,7 +1104,7 @@ private:
     {
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = 0; // Optional
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         beginInfo.pInheritanceInfo = nullptr; // Optional
 
         if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
@@ -1154,9 +1154,14 @@ private:
 
         vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
+
         if (EnableImGui)
         {
-            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ImGuiCommandBuffer, graphicsPipeline);
+            ImGui::ShowDemoWindow();
+
+            ImGui::Render();
+
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer, graphicsPipeline);
         }
 
         vkCmdEndRenderPass(commandBuffer);
@@ -1179,14 +1184,11 @@ private:
         else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
             throw std::runtime_error("Failed to acquire swap chain image!");
 
+        updateUniformBuffer(currentFrame);
+        recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
         // Only reset the fence if we are submitting work
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
-
-        updateUniformBuffer(currentFrame);
-
-        vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-        recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1370,13 +1372,14 @@ private:
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);;
+        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
 
         if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
             throw std::runtime_error("Failed to create descriptor pool!");
@@ -1880,10 +1883,7 @@ private:
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
 
-    //ImGui 
-
-    VkCommandBuffer ImGuiCommandBuffer;
-    VkFramebuffer ImGuiFramebuffer;
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
     // CPU and GPU synchronization
     std::vector<VkSemaphore> imageAvailableSemaphores;
